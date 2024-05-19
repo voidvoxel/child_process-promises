@@ -1,0 +1,12 @@
+.git/
+
+examples/
+node_modules/
+src/
+tmp/
+
+.gitattributes
+.gitignore
+.npmignore
+
+tsconfig.json
