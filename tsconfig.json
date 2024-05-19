@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+        "allowJs": true,
+        "lib": [
+            "Decorators",
+            "ES2015"
+        ],
+        "module": "NodeNext",
+        "noImplicitAny": true,
+        "removeComments": false,
+        "preserveConstEnums": true,
+        "outDir": "dist",
+        "sourceMap": true,
+        "target": "ES6",
+        "declaration": true
+    },
+    "include": [
+        "src/*.ts",
+        "src/**.ts",
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "**/*.spec.ts"
+    ]
+}
