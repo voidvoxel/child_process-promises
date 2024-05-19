@@ -1,156 +1,123 @@
 import * as child_process from "child_process";
 import { ObjectEncodingOptions } from "fs";
-import internal, { Stream, Writable } from "stream";
 
 
-interface IPipeOptions {
-    [key: string]: boolean | Stream
+function getExitCode (
+    childProcess: AsyncChildProcess
+): Promise<number> {
+    if (typeof this._$AsyncChildProcess$exitCode === "number") return this._$AsyncChildProcess$exitCode;
+    if (this._$AsyncChildProcess$isRunning) return this._$AsyncChildProcess$promise;
 
+    this._$AsyncChildProcess$isRunning = true;
 
-    input?: boolean | Stream
-    output?: boolean | Stream
-    error?: boolean | Stream
-}
+    this._$AsyncChildProcess$promise = new Promise<number>(
+        (resolve, reject) => {
+            childProcess.once(
+                "error",
+                (error: Error) => {
+                    this._$AsyncChildProcess$isRunning = false;
+                    this._$AsyncChildProcess$promise = null;
+                    this._$AsyncChildProcess$exitCode = 1;
 
-
-type PipeOptions = boolean | Stream | IPipeOptions;
-
-
-interface ForkOptions extends child_process.ForkOptions {
-    pipe?: PipeOptions
-}
-
-
-function shouldInherit (
-    option?: boolean | Stream
-) {
-    if (typeof option === "boolean") return option;
-
-    return false;
-}
-
-
-function shouldPipe (
-    option?: boolean | Stream
-) {
-    if (!option) return;
-
-    if (option instanceof Stream) return true;
-
-    return false;
-}
-
-
-export function promisifyChildProcess (
-    childProcess: child_process.ChildProcess | Function,
-    pipe?: boolean | Stream | IPipeOptions
-): Promise<void> {
-    if (typeof childProcess === "function") {
-        return new Promise(
-            (resolve, reject) => {
-                try {
-                    resolve(childProcess());
-                } catch (error) {
                     reject(error.message);
+                }
+            );
+
+            childProcess.once(
+                "exit",
+                (exitCode: number) => {
+                    this._$AsyncChildProcess$isRunning = false;
+                    this._$AsyncChildProcess$promise = null;
+                    this._$AsyncChildProcess$exitCode = exitCode;
+
+                    resolve(exitCode);
+                }
+            );
+        }
+    );
+
+    return this._$AsyncChildProcess$promise;
+}
+
+
+async function _$AsyncChildProcess$waitUntilExitCode (
+    childProcess: AsyncChildProcess
+): Promise<number> {
+    childProcess._$AsyncChildProcess$context ??= {};
+
+    return getExitCode.call(
+        childProcess._$AsyncChildProcess$context,
+        childProcess
+    );
+}
+
+
+class AsyncChildProcess extends child_process.ChildProcess {
+    _$AsyncChildProcess$context: any
+
+
+    async promiseExit (): Promise<void> {
+        return new Promise<void>(
+            async (resolve, reject) => {
+                try {
+                    await _$AsyncChildProcess$waitUntilExitCode(this);
+
+                    resolve(undefined);
+                } catch {
+                    reject(`Child process failed to start.`);
                 }
             }
         );
     }
 
-    if (!pipe) pipe = false;
 
-    if (typeof pipe === "boolean") {
-        pipe = {
-            input: pipe
-        };
+    async promiseExitCode (): Promise<number> {
+        return _$AsyncChildProcess$waitUntilExitCode(this);
     }
-
-    if (pipe instanceof Stream) {
-        pipe = {
-            input: false,
-            output: pipe,
-            error: true
-        };
-    }
-
-    for (let key in pipe) {
-        if (typeof pipe[key] !== "boolean" && !(pipe[key] instanceof Stream)) {
-            if (key === "output") {
-                if (typeof pipe.input === "boolean") pipe[key] = pipe.input;
-            } else if (key === "error") {
-                if (typeof pipe.output === "boolean") pipe[key] = pipe.output;
-                else if (pipe.output instanceof Stream) pipe[key] = pipe.output;
-            }
-        }
-    }
-
-    if (typeof pipe.error !== "boolean" && !(pipe.error instanceof Stream)) {
-        pipe.error = false;
-    }
-
-    if (typeof pipe.input !== "boolean" && !(pipe.input instanceof Stream)) {
-        pipe.input = false;
-    }
-
-    if (typeof pipe.output !== "boolean" && !(pipe.output instanceof Stream)) {
-        pipe.output = false;
-    }
-
-    console.log(pipe);
-
-    const promise = new Promise<void>(
-        (resolve, reject) => {
-            if (typeof childProcess !== "object") {
-                const errorMessage
-                    =   "`childProcess` must be of type \`object\`, "
-                    +   "but instead received a \`"
-                    +   typeof childProcess
-                    +   "\`."
-                ;
-
-                reject(errorMessage);
-
-                return;
-            }
-
-            childProcess.on(
-                "error",
-                (error: Error) => reject(error.message)
-            );
-
-            childProcess.on(
-                "exit",
-                (exitCode: number) => !exitCode
-                    ?   resolve(undefined)
-                    :   reject(`Child process returned code ${exitCode}.`)
-            );
-        }
-    );
-
-    return promise;
 }
 
 
-export async function exec(
+function setPrototype (
+    childProcess: child_process.ChildProcess
+): AsyncChildProcess {
+    Object.defineProperty(
+        childProcess,
+        "promiseExit",
+        {
+            value: AsyncChildProcess.prototype.promiseExit
+        }
+    );
+
+    Object.defineProperty(
+        childProcess,
+        "promiseExitCode",
+        {
+            value: AsyncChildProcess.prototype.promiseExitCode
+        }
+    );
+
+    return childProcess as AsyncChildProcess;
+}
+
+
+export function exec(
     command: string,
     options: ObjectEncodingOptions | child_process.ExecOptions
-): Promise<void> {
+): AsyncChildProcess {
     const subprocess = child_process.exec(
         command,
         options
     );
 
-    return promisifyChildProcess(subprocess);
+    return setPrototype(subprocess);
 }
 
 
-export async function fork(
+export function fork(
     modulePath: string,
     args: string[] | child_process.ForkOptions,
-    options: ForkOptions | null
+    options: child_process.ForkOptions | null
 ) {
-    options.pipe ??= false;
-
     let subprocess;
 
     if (args && args instanceof Array && typeof args[0] === "string") {
@@ -166,13 +133,11 @@ export async function fork(
         );
     }
 
-    const pipe = options.pipe ?? null;
-
-    return promisifyChildProcess(subprocess);
+    return setPrototype(subprocess);
 }
 
 
-export async function spawn(
+export function spawn(
     modulePath: string,
     args: string[] | child_process.SpawnOptions,
     options: child_process.SpawnOptions | null
@@ -196,13 +161,12 @@ export async function spawn(
 
     options.stdio = "ignore";
 
-    return promisifyChildProcess(subprocess);
+    return setPrototype(subprocess);
 }
 
 
 export default {
     exec,
     fork,
-    spawn,
-    promisifyChildProcess
+    spawn
 };
