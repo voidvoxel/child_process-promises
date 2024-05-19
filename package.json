@@ -1,6 +1,6 @@
 {
     "name": "@child_process/promises",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "Command shell | Cross-platform | TypeScript",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
